@@ -5,7 +5,12 @@
       "Bash(test:*)",
       "Bash(mkdir:*)",
       "Bash(npm run build)",
-      "Bash(git ls-tree:*)"
+      "Bash(git ls-tree:*)",
+      "Bash(find:*)",
+      "Bash(cat:*)",
+      "Bash(npm run dev:*)",
+      "Bash(xargs ls:*)",
+      "Bash(copy:*)"
     ],
     "deny": [],
     "ask": []
