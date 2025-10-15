@@ -1,0 +1,20 @@
+{
+  "carpenter": {
+    "name": "Carpenter",
+    "keywords": ["carpenter", "carpentry", "\"trim work\"", "framing"],
+    "required": ["+need", "+needed", "+\"looking for\"", "+recommend", "+hiring", "+hire", "+quote"],
+    "exclude": ["-\"seeking work\"", "-\"I am a\"", "-\"available for\"", "-\"offering services\""]
+  },
+  "plumber": {
+    "name": "Plumber",
+    "keywords": ["plumber", "plumbing", "pipe work"],
+    "required": ["+need", "+needed", "+\"looking for\"", "+hiring"],
+    "exclude": ["-\"seeking work\"", "-\"I am a\""]
+  },
+  "electrician": {
+    "name": "Electrician",
+    "keywords": ["electrician", "electrical", "wiring"],
+    "required": ["+need", "+needed", "+\"looking for\"", "+hiring"],
+    "exclude": ["-\"seeking work\"", "-\"I am a\""]
+  }
+}

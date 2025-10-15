@@ -1,0 +1,24 @@
+name: Reset Monthly Search Quotas
+
+on:
+  schedule:
+    # Run daily at midnight UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  reset-quotas:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Reset Monthly Search Quotas
+        run: |
+          curl -X POST \
+            "${{ secrets.SUPABASE_URL }}/rest/v1/rpc/reset_monthly_search_quota" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{}'
+
+      - name: Log completion
+        run: echo "Monthly search quotas reset completed at $(date)"
