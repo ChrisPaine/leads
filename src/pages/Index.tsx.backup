@@ -1,0 +1,1673 @@
+import React, { useState, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel, SelectSeparator } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+
+import { Search, ChevronDown, ChevronUp, MessageSquare, Hash, Users, Camera, Globe, Briefcase, Play, TrendingUp, Settings, Save, FolderOpen, User, LogOut, Crown, Home, MessageCircle } from 'lucide-react';
+import { ThemeToggle } from '@/components/theme-toggle';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useAuth } from '@/components/auth/AuthProvider';
+import { AuthDialog } from '@/components/auth/AuthDialog';
+import { PaywallDialog } from '@/components/paywall/PaywallDialog';
+import { SavedQueriesDialog } from '@/components/queries/SavedQueriesDialog';
+import { UpgradeDialog } from '@/components/upgrade/UpgradeDialog';
+import { useQueries } from '@/hooks/useQueries';
+import { useUsageLimit } from '@/hooks/useUsageLimit';
+import { useToast } from '@/hooks/use-toast';
+import { useNavigate } from 'react-router-dom';
+import { GoogleAutocomplete } from '@/components/ui/google-autocomplete';
+import { formatVolume, getIndentClass, formatDisplayName } from '@/utils/utils';
+
+// Import constants
+import { platforms, platformDescriptions, platformNames, type Platform } from '@/constants/platforms';
+import { initialPhraseCategories, phrasePresets, type PhraseCategory, type PhrasePreset } from '@/constants/phraseCategories';
+import { healthMarketTopics, wealthMarketTopics, relationshipMarketTopics, type MarketTopic } from '@/constants/marketTopics';
+import { googleTrendsCategories, type GoogleTrendsCategory } from '@/constants/googleTrends';
+
+// Import custom hooks
+import { useSearchQuery } from '@/hooks/useSearchQuery';
+import { useTutorial } from '@/hooks/useTutorial';
+import { useSearchPresets } from '@/hooks/useSearchPresets';
+
+// Import extracted components
+import { Header } from '@/components/Header';
+import { ResearchTopicCard } from '@/components/ResearchTopicCard';
+
+const Index = () => {
+  // Core search state
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
+  const [phraseCategories, setPhraseCategories] = useState<PhraseCategory[]>(initialPhraseCategories);
+  const [selectedPhrases, setSelectedPhrases] = useState<string[]>([]);
+  const [mainTopic, setMainTopic] = useState('');
+  const [additionalKeywords, setAdditionalKeywords] = useState('');
+
+  // Auth and paywall state
+  const [authDialogOpen, setAuthDialogOpen] = useState(false);
+  const [paywallDialogOpen, setPaywallDialogOpen] = useState(false);
+  const [paywallFeature, setPaywallFeature] = useState('');
+  const [upgradeDialogOpen, setUpgradeDialogOpen] = useState(false);
+  const [upgradeReason, setUpgradeReason] = useState('');
+  const [savedQueriesDialogOpen, setSavedQueriesDialogOpen] = useState(false);
+
+  // Advanced options modal state
+  const [redditAdvancedOpen, setRedditAdvancedOpen] = useState(false);
+  const [showAdvancedModal, setShowAdvancedModal] = useState(false);
+  const [selectedPlatformForAdvanced, setSelectedPlatformForAdvanced] = useState<string>('');
+
+  // Auth hooks
+  const { user, signOut, isPro, isPremium, isEnterprise, isAdmin, isSupabaseConnected, loading, checkSubscription } = useAuth();
+  const { saveQuery } = useQueries();
+  const { canSearch, incrementSearchCount, getRemainingSearches, isLimited } = useUsageLimit();
+  const { toast } = useToast();
+  const navigate = useNavigate();
+
+  // Custom hooks
+  const {
+    generatedQuery,
+    setGeneratedQuery,
+    timeFilter,
+    setTimeFilter,
+    googleTrendsCategory,
+    setGoogleTrendsCategory,
+    lastLinks,
+    setLastLinks,
+    generateQuery
+  } = useSearchQuery();
+
+  const {
+    showTutorial,
+    setShowTutorial,
+    tutorialStep,
+    setTutorialStep,
+    spotlightTick,
+    tutorialSteps,
+    nextStep,
+    prevStep,
+    skipTutorial
+  } = useTutorial({
+    user,
+    isPro,
+    isPremium,
+    isEnterprise,
+    isAdmin,
+    setMainTopic,
+    setAdditionalKeywords,
+    setSelectedPlatforms,
+    setSelectedPhrases,
+    setSelectedPreset: (value: string) => setSelectedPreset(value),
+    setRedditAdvancedOpen: (value: boolean) => setRedditAdvancedOpen(value),
+    setShowAdvancedModal: (value: boolean) => setShowAdvancedModal(value),
+    setSelectedPlatformForAdvanced: (value: string) => setSelectedPlatformForAdvanced(value)
+  });
+
+  const {
+    selectedPreset,
+    setSelectedPreset,
+    saveQueryTitle,
+    setSaveQueryTitle,
+    showSaveInput,
+    setShowSaveInput,
+    applyPreset,
+    clearAllPhrases,
+    clearAllSettings,
+    handleLoadQuery
+  } = useSearchPresets(
+    setSelectedPhrases,
+    setPhraseCategories,
+    setMainTopic,
+    setAdditionalKeywords,
+    setSelectedPlatforms
+  );
+
+  // Debug logging to help diagnose blank page issues
+  useEffect(() => {
+    console.log('Index component render state:', { loading, user: !!user, isSupabaseConnected });
+  }, [loading, user, isSupabaseConnected]);
+
+  // Auto-show upgrade dialog for new users (signup or first login)
+  useEffect(() => {
+    // Check for upgrade parameter from signup redirect (works with HashRouter too)
+    const getParam = (key: string) => {
+      const fromSearch = new URLSearchParams(window.location.search).get(key);
+      if (fromSearch) return fromSearch;
+      const hash = window.location.hash;
+      if (hash.includes('?')) {
+        const hashQuery = hash.split('?')[1];
+        return new URLSearchParams(hashQuery).get(key);
+      }
+      return null;
+    };
+    const showUpgrade = getParam('show_upgrade');
+    const success = getParam('success');
+    const canceled = getParam('canceled');
+    
+    // If user has access (Pro/Enterprise/Admin), ensure upgrade dialog is closed and clear any flags
+    if (user && !loading && (isPro || isPremium || isEnterprise || isAdmin)) {
+      if (showUpgrade || success || canceled) {
+        const currentHash = window.location.hash.split('?')[0];
+        const newUrl = window.location.pathname + currentHash;
+        window.history.replaceState({}, document.title, newUrl);
+      }
+      sessionStorage.removeItem('fresh_signup_confirmation');
+      setUpgradeDialogOpen(false);
+      return;
+    }
+    
+    // Handle Stripe payment completion
+    if (success === 'true') {
+      // Clear the URL parameter
+      const currentHash = window.location.hash.split('?')[0];
+      const newUrl = window.location.pathname + currentHash;
+      window.history.replaceState({}, document.title, newUrl);
+      
+      // Force refresh subscription status after successful payment
+      if (user) {
+        toast({
+          title: "Payment Successful!",
+          description: "Your subscription is being activated...",
+        });
+        
+        // Check subscription status multiple times to ensure it's updated
+        setTimeout(() => checkSubscription(), 1000);
+        setTimeout(() => checkSubscription(), 3000);
+        setTimeout(() => checkSubscription(), 6000);
+      }
+      return;
+    }
+    
+    if (canceled === 'true') {
+      // Clear the URL parameter and show message
+      const currentHash = window.location.hash.split('?')[0];
+      const newUrl = window.location.pathname + currentHash;
+      window.history.replaceState({}, document.title, newUrl);
+      toast({
+        title: "Payment Canceled",
+        description: "Your payment was canceled. You can try again anytime.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (showUpgrade === 'welcome') {
+      // Clear the URL parameter and show upgrade dialog
+      const newUrl = window.location.pathname + window.location.hash;
+      window.history.replaceState({}, document.title, newUrl);
+      setTimeout(() => {
+        setUpgradeDialogOpen(true);
+        setUpgradeReason('Welcome! Get unlimited searches and premium features');
+      }, 500);
+      return;
+    }
+    
+    // Removed automatic upgrade prompt for fresh signups to avoid false positives
+    // Users will only see upgrade when they hit a paywalled feature or explicitly request it via URL
+    return;
+  }, [user, loading, isPro, isPremium, isEnterprise, isAdmin, checkSubscription, toast]);
+
+  // Advanced platform options
+  const [advancedOptions, setAdvancedOptions] = useState({
+    facebook: {
+      groupId: '',
+      publicPostsOnly: false,
+      communityType: [] as string[]
+    },
+    reddit: {
+      selfPostsOnly: false,
+      minScore: false,
+      scoreThreshold: 50,
+      author: ''
+    },
+    tiktok: {
+      // Content Discovery
+      hashtagTrends: [] as string[],
+      contentTypes: [] as string[],
+      soundTrends: false,
+      challengeId: false,
+      
+      // Creator Features  
+      creatorCollabs: [] as string[],
+      creatorTier: [] as string[],
+      specificCreator: '',
+      
+      // Engagement & Analytics
+      minEngagement: false,
+      engagementThreshold: 10000,
+      viralPatterns: [] as string[],
+      
+      // Advanced Targeting
+      brandMentions: false,
+      crossPlatformTrends: false,
+      realTimeAlerts: false,
+      strictRecency: false
+    },
+    twitter: {
+      verifiedOnly: false,
+      hasMedia: false,
+      emotionalContent: false,
+      communityValidation: false,
+      opinions: false,
+      rants: false,
+      experiences: false,
+      searchLists: false,
+      searchCommunities: false
+    },
+    instagram: {
+      linkInBio: false,
+      swipeUp: false,
+      reelsOnly: false
+    },
+    linkedin: {
+      publicPosts: false,
+      pulseArticles: false,
+      companyPosts: false,
+      industrySpecific: false,
+      roleBased: false,
+      targetRole: 'CEO'
+    },
+    youtube: {
+      commentsSearch: false,
+      videoContent: false,
+      channelSpecific: false,
+      videoReactions: false,
+      tutorialFeedback: false,
+      productReviews: false,
+      longTermReviews: false
+    }
+  });
+
+  // Update query whenever inputs change
+  useEffect(() => {
+    generateQuery(selectedPlatforms, selectedPhrases, mainTopic, additionalKeywords, advancedOptions);
+  }, [selectedPlatforms, selectedPhrases, mainTopic, additionalKeywords, advancedOptions, timeFilter, generateQuery]);
+
+  // Basic SEO for the tool
+  useEffect(() => {
+    const title = 'Pain Point Discovery Tool | Find Customer Problems & Pain Points';
+    document.title = title;
+
+    const desc = 'Discover customer pain points across social media platforms. Build advanced queries to find problems, struggles, and opportunities on Reddit, YouTube, Twitter, Instagram, Facebook, and LinkedIn.';
+    let meta = document.querySelector('meta[name="description"]');
+    if (!meta) {
+      meta = document.createElement('meta');
+      meta.setAttribute('name', 'description');
+      document.head.appendChild(meta);
+    }
+    meta.setAttribute('content', desc);
+
+    let canonical = document.querySelector('link[rel="canonical"]');
+    if (!canonical) {
+      canonical = document.createElement('link');
+      canonical.setAttribute('rel', 'canonical');
+      document.head.appendChild(canonical);
+    }
+    canonical.setAttribute('href', window.location.href);
+  }, []);
+
+  const togglePlatform = (platformId: string) => {
+    setSelectedPlatforms(prev => 
+      prev.includes(platformId) 
+        ? prev.filter(id => id !== platformId)
+        : [...prev, platformId]
+    );
+  };
+
+  const toggleCategory = (categoryIndex: number) => {
+    setPhraseCategories(prev => 
+      prev.map((category, index) => 
+        index === categoryIndex 
+          ? { ...category, isOpen: !category.isOpen }
+          : category
+      )
+    );
+  };
+
+  const togglePhrase = (phrase: string) => {
+    setSelectedPhrases(prev => 
+      prev.includes(phrase)
+        ? prev.filter(p => p !== phrase)
+        : [...prev, phrase]
+    );
+  };
+
+  const handleSearch = () => {
+    if (!mainTopic.trim() || selectedPlatforms.length === 0) {
+      toast({ title: 'Missing info', description: 'Please enter a main topic and select at least one platform.' });
+      return;
+    }
+
+    // Check usage limits for free users
+    if (!canSearch()) {
+      if (!user) {
+        // Anonymous user hit limit - show auth dialog
+        setAuthDialogOpen(true);
+        return;
+      } else {
+        // Logged-in free user hit limit - show upgrade dialog
+        setUpgradeReason('continue searching');
+        setUpgradeDialogOpen(true);
+        return;
+      }
+    }
+
+    // Increment search count for tracking
+    incrementSearchCount();
+
+    // Use the links generated by the useSearchQuery hook
+    if (!lastLinks || lastLinks.length === 0) {
+      toast({ title: 'Error', description: 'No search links were generated.' });
+      return;
+    }
+
+    // Open all links in new tabs with random delays to avoid being flagged as a bot
+    lastLinks.forEach((link, index) => {
+      // Add random delays between tab opens (2-5 seconds)
+      const delay = Math.floor(Math.random() * 3000) + 2000;
+      setTimeout(() => {
+        window.open(link.url, '_blank');
+      }, delay * index); // Stagger the delays
+    });
+
+    // Show success message
+    toast({
+      title: 'Search opened',
+      description: `Opened ${lastLinks.length} search tab${lastLinks.length === 1 ? '' : 's'} in your browser.`
+    });
+  };
+
+  const handleSaveQuery = async () => {
+    // For demo purposes, allow saving without Supabase
+    if (!isSupabaseConnected) {
+      toast({ 
+        title: 'Demo Mode', 
+        description: 'Query saving is a premium feature available with Supabase connection.' 
+      });
+      return;
+    }
+    
+    if (!user) {
+      setAuthDialogOpen(true);
+      return;
+    }
+
+    if (!(isPro || isPremium || isEnterprise || isAdmin)) {
+      setPaywallFeature('save queries');
+      setPaywallDialogOpen(true);
+      return;
+    }
+
+    if (!saveQueryTitle.trim()) {
+      toast({
+        title: 'Please enter a title',
+        description: 'A title is required to save your query.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const queryData = {
+      selectedPlatforms,
+      selectedPhrases,
+      mainTopic,
+      additionalKeywords,
+      generatedQuery,
+      timeFilter,
+    };
+
+    const saved = await saveQuery(saveQueryTitle, queryData, selectedPlatforms);
+    if (saved) {
+      toast({
+        title: 'Query saved!',
+        description: `"${saveQueryTitle}" has been saved to your queries.`,
+      });
+      setSaveQueryTitle('');
+      setShowSaveInput(false);
+    } else {
+      toast({
+        title: 'Failed to save',
+        description: 'There was an error saving your query. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-subtle">
+      {loading ? (
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+            <p className="text-muted-foreground">Loading...</p>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Header */}
+          <header className="bg-background shadow-sm border-b border-border">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              {user && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSavedQueriesDialogOpen(true)}
+                  >
+                    <FolderOpen className="w-4 h-4 mr-2" />
+                    Saved Queries
+                  </Button>
+                </div>
+              )}
+            </div>
+            
+            <div className="flex-1 text-center">
+              <div className="flex items-center justify-center gap-4 mb-1">
+                {/* Left side icons */}
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 bg-blue-600 rounded-sm flex items-center justify-center">
+                    <span className="text-white text-xs font-bold">f</span>
+                  </div>
+                  <div className="w-6 h-6 bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400 rounded-lg flex items-center justify-center">
+                    <div className="w-3 h-3 border-2 border-white rounded-sm"></div>
+                  </div>
+                  <div className="w-6 h-6 bg-blue-700 rounded-sm flex items-center justify-center">
+                    <span className="text-white text-xs font-bold">in</span>
+                  </div>
+                  <div className="w-6 h-6 bg-black rounded-sm flex items-center justify-center">
+                    <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12.53.02C13.84 0 15.14.01 16.44 0c.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/>
+                    </svg>
+                  </div>
+                </div>
+                
+                <h1 className="text-2xl font-bold text-foreground mx-4">
+                  Pain Point Discovery Tool
+                </h1>
+                
+                {/* Right side icons */}
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 bg-orange-500 rounded-full flex items-center justify-center">
+                    <span className="text-white text-xs font-bold">r/</span>
+                  </div>
+                  <div className="w-6 h-6 bg-blue-400 rounded-sm flex items-center justify-center">
+                    <span className="text-white text-xs font-bold">X</span>
+                  </div>
+                  <div className="w-6 h-6 bg-red-600 rounded-sm flex items-center justify-center">
+                    <div className="w-0 h-0 border-l-[4px] border-l-white border-y-[3px] border-y-transparent ml-0.5"></div>
+                  </div>
+                  <div className="w-6 h-6 bg-blue-500 rounded-sm flex items-center justify-center">
+                    <TrendingUp className="w-3 h-3 text-white" />
+                  </div>
+                </div>
+              </div>
+              <p className="text-muted-foreground">
+                Build advanced search queries to discover customer insights across social platforms
+              </p>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowTutorial(true)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                Help Tour
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate('/pricing')}
+                className="text-primary border-primary hover:bg-primary hover:text-primary-foreground"
+              >
+                Pricing
+              </Button>
+              <ThemeToggle />
+              {user ? (
+                <div className="flex items-center gap-2">
+                  {(isPro || isPremium || isEnterprise || isAdmin) && (
+                    <Badge variant="secondary" className="bg-primary/10 text-primary">
+                      <Crown className="w-3 h-3 mr-1" />
+                      {(isEnterprise || isAdmin) ? 'Enterprise' : 'Pro'}
+                    </Badge>
+                  )}
+                  <Button variant="ghost" size="sm" onClick={signOut}>
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Sign Out
+                  </Button>
+                </div>
+              ) : (
+                <Button variant="outline" size="sm" onClick={() => navigate('/auth')}>
+                  <User className="w-4 h-4 mr-2" />
+                  Sign In
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+          {/* Left Column - Topic, Phrases & Filters */}
+          <div className="lg:col-span-4 space-y-4">
+            {/* Main Topic and Keywords */}
+            <Card className="shadow-card">
+              <CardHeader>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-4">
+                    <CardTitle className="flex items-center gap-2 text-2xl border-b border-border pb-2">
+                      <Hash className="w-7 h-7 text-research-blue" />
+                      Research Topic
+                    </CardTitle>
+                    <Select value={timeFilter} onValueChange={(v) => setTimeFilter(v as 'any' | 'hour' | 'day' | 'week' | 'month' | 'year')}>
+                      <SelectTrigger className="w-32 h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="any">Any time</SelectItem>
+                        <SelectItem value="hour">Past hour</SelectItem>
+                        <SelectItem value="day">Past 24 hours</SelectItem>
+                        <SelectItem value="week">Past week</SelectItem>
+                        <SelectItem value="month">Past month</SelectItem>
+                        <SelectItem value="year">Past year</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {user && (
+                      <>
+                        {showSaveInput ? (
+                          <div className="flex gap-2 items-center">
+                            <Input
+                              placeholder="Query title..."
+                              value={saveQueryTitle}
+                              onChange={(e) => setSaveQueryTitle(e.target.value)}
+                              className="w-32 h-8 text-sm"
+                              onKeyPress={(e) => e.key === 'Enter' && handleSaveQuery()}
+                            />
+                            <Button onClick={handleSaveQuery} size="sm" variant="outline">
+                              <Save className="w-3 h-3 mr-1" />
+                              Save
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={() => {
+                                setShowSaveInput(false);
+                                setSaveQueryTitle('');
+                              }}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button 
+                            onClick={() => setShowSaveInput(true)} 
+                            variant="outline" 
+                            size="sm"
+                          >
+                            <Save className="w-4 h-4 mr-2" />
+                            Save Query
+                          </Button>
+                        )}
+                      </>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={clearAllSettings}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      Clear All
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div>
+                  <Label htmlFor="mainTopic" className="text-sm font-medium mb-2 block">
+                    Main Topic <span className="text-destructive">*</span>
+                  </Label>
+                  <div className="flex gap-2 items-center">
+                    <GoogleAutocomplete
+                      id="main-topic"
+                      value={mainTopic}
+                      onChange={setMainTopic}
+                      placeholder="e.g. 3 evergreen core markets where people always spend:    Health,  Wealth,  Relationships!"
+                      className="flex-1"
+                    />
+                    <Button
+                      id="search-button"
+                      variant="default"
+                      onClick={handleSearch}
+                      disabled={!mainTopic.trim() || selectedPlatforms.length === 0}
+                      className="px-4 py-2"
+                    >
+                      <Search className="w-4 h-4 mr-1" />
+                      Search
+                    </Button>
+                  </div>
+                  
+                  {/* Usage indicator for free users */}
+                  {isLimited && (
+                    <div className="mt-2 text-center">
+                      <p className="text-sm text-muted-foreground">
+                        {getRemainingSearches() > 0 ? (
+                          <>
+                            {getRemainingSearches()} free search{getRemainingSearches() === 1 ? '' : 'es'} remaining today
+                            {getRemainingSearches() <= 2 && (
+                              <Button 
+                                variant="link" 
+                                size="sm" 
+                                className="ml-2 p-0 h-auto text-primary"
+                                onClick={() => setAuthDialogOpen(true)}
+                              >
+                                Sign up for unlimited
+                              </Button>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            Daily limit reached. 
+                            <Button 
+                              variant="link" 
+                              size="sm" 
+                              className="ml-1 p-0 h-auto text-primary"
+                              onClick={() => setAuthDialogOpen(true)}
+                            >
+                              Sign up for unlimited searches
+                            </Button>
+                          </>
+                        )}
+                      </p>
+                    </div>
+                  )}
+                  
+                  <Collapsible className="mt-2">
+                    <CollapsibleTrigger className="w-full profitable-market-templates">
+                      <div className="flex items-center justify-between p-2 bg-research-gray rounded-lg hover:bg-research-blue-light transition-colors">
+                        <h3 className="font-semibold text-left text-sm">Profitable Market Main Topic Templates</h3>
+                        <ChevronDown className="w-4 h-4" />
+                      </div>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="mt-2">
+                      <div className="grid grid-cols-3 gap-2">
+                    {/* Health Market Dropdown */}
+                    <Select key={`health-${mainTopic}`} value={mainTopic || undefined} onValueChange={(value) => setMainTopic(value)}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Health Market" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-[400px]">
+                        <SelectGroup>
+                          <SelectLabel>Health Market</SelectLabel>
+                          {healthMarketTopics.map((topic) => (
+                            <SelectItem 
+                              key={topic.value} 
+                              value={topic.value}
+                              className={getIndentClass(topic.level)}
+                            >
+                              {formatDisplayName(topic.name, topic.level)} ({formatVolume(topic.volume)})
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+
+                    {/* Wealth Market Dropdown */}
+                    <Select key={`wealth-${mainTopic}`} value={mainTopic || undefined} onValueChange={(value) => setMainTopic(value)}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Wealth Market" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-[400px]">
+                        <SelectGroup>
+                          <SelectLabel>Wealth Market</SelectLabel>
+                          {wealthMarketTopics.map((topic) => (
+                            <SelectItem 
+                              key={topic.value} 
+                              value={topic.value}
+                              className={getIndentClass(topic.level)}
+                            >
+                              {formatDisplayName(topic.name, topic.level)} ({formatVolume(topic.volume)})
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+
+                    {/* Relationships Market Dropdown */}
+                    <Select key={`relationships-${mainTopic}`} value={mainTopic || undefined} onValueChange={(value) => setMainTopic(value)}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Relationships Market" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-[400px]">
+                        <SelectGroup>
+                          <SelectLabel>Relationships Market</SelectLabel>
+                          {relationshipMarketTopics.map((topic) => (
+                            <SelectItem 
+                              key={topic.value} 
+                              value={topic.value}
+                              className={getIndentClass(topic.level)}
+                            >
+                              {formatDisplayName(topic.name, topic.level)} ({formatVolume(topic.volume)})
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                </div>
+                
+                <div className="mt-4">
+                  <Label htmlFor="additional-keywords" className="text-sm font-medium mb-2 block">
+                    Search within comments & content
+                  </Label>
+                  <Input
+                    id="additional-keywords"
+                    value={additionalKeywords}
+                    onChange={(e) => setAdditionalKeywords(e.target.value)}
+                    placeholder="e.g., small business, beginners, affordable..."
+                    className="w-full"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Find discussions mentioning these terms within posts and comments.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Market Templates moved after Additional Keywords for better flow */}
+
+            {/* Search Phrase Builder */}
+            <Card id="phrase-builder" className="shadow-card">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2 text-lg border-b border-border pb-2">
+                    <MessageSquare className="w-5 h-5 text-research-blue" />
+                    Pain Point Filter
+                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Select value={selectedPreset} onValueChange={applyPreset}>
+                      <SelectTrigger className="w-48">
+                        <SelectValue placeholder="Choose preset..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {phrasePresets.map((preset) => (
+                          <SelectItem key={preset.id} value={preset.id} textValue={preset.name}>
+                            <div className="flex flex-col">
+                              <span className="font-medium">{preset.name}</span>
+                              <span className="text-xs text-muted-foreground">{preset.description}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {selectedPhrases.length > 0 && (
+                      <Button variant="outline" size="sm" onClick={clearAllPhrases}>
+                        Clear All ({selectedPhrases.length})
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                    {phraseCategories.map((category, categoryIndex) => (
+                      <Collapsible
+                        key={category.title}
+                        open={category.isOpen}
+                        onOpenChange={() => toggleCategory(categoryIndex)}
+                      >
+                        <CollapsibleTrigger className="w-full">
+                          <div className="flex items-center justify-between p-2 bg-research-gray rounded-lg hover:bg-research-blue-light transition-colors">
+                            <h3 className="font-semibold text-left text-sm">{category.title}</h3>
+                            {category.isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                          </div>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent className="mt-2">
+                          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 p-2 bg-white rounded-lg border border-border">
+                            {category.phrases.map((phrase) => (
+                              <Badge
+                                key={phrase}
+                                variant={selectedPhrases.includes(phrase) ? "default" : "secondary"}
+                                className="cursor-pointer justify-center py-1 px-2 hover:scale-105 transition-transform text-xs"
+                                onClick={() => togglePhrase(phrase)}
+                              >
+                                {phrase}
+                              </Badge>
+                            ))}
+                          </div>
+                        </CollapsibleContent>
+                      </Collapsible>
+                    ))}
+                  </CardContent>
+            </Card>
+          </div>
+
+          {/* Right Column - Platform Selection & Search Settings */}
+          <div className="lg:col-span-1 space-y-4">
+            
+            {/* Platform Selection */}
+            <Card id="platform-selector" className="shadow-card">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between border-b border-border pb-2">
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <Globe className="w-5 h-5 text-research-blue" />
+                    Platforms
+                  </CardTitle>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      checked={selectedPlatforms.length === platforms.length}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setSelectedPlatforms(platforms.map(p => p.id));
+                        } else {
+                          setSelectedPlatforms([]);
+                        }
+                      }}
+                      className="h-4 w-4"
+                    />
+                    <Label className="text-sm font-medium cursor-pointer">All</Label>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0">
+                {/* Mobile-first responsive grid: 1 col mobile, 2 cols desktop right column */}
+                <div className="grid grid-cols-1 lg:grid-cols-1 gap-1">
+                  {platforms.map((platform) => {
+                    const platformElement = (
+                      <label
+                        key={platform.id}
+                        className="flex items-center space-x-3 p-3 hover:bg-muted/50 cursor-pointer rounded-lg border border-transparent hover:border-border transition-all"
+                      >
+                         <Checkbox
+                           checked={selectedPlatforms.includes(platform.id)}
+                           onCheckedChange={() => togglePlatform(platform.id)}
+                           className="h-4 w-4 flex-shrink-0"
+                         />
+                         <span className={`${platform.color} flex-shrink-0`}>
+                           {React.createElement(platform.icon, { className: 'w-4 h-4' })}
+                         </span>
+                         <span className="font-medium text-sm flex-1">{platform.name}</span>
+                          {selectedPlatforms.includes(platform.id) && platform.id !== 'google-trends' && (
+                            user && (isPro || isPremium || isEnterprise || isAdmin) ? (
+                              <Button
+                                id={platform.id === 'reddit' ? 'advanced-modal-trigger' : undefined}
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 hover:bg-muted"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setSelectedPlatformForAdvanced(platform.id);
+                                  setShowAdvancedModal(true);
+                                }}
+                              >
+                                <Settings className="h-3 w-3" />
+                              </Button>
+                            ) : (
+                              <Button
+                                id={platform.id === 'reddit' ? 'advanced-modal-trigger' : undefined}
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 hover:bg-muted"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  if (!user) {
+                                    setAuthDialogOpen(true);
+                                  } else {
+                                    setPaywallFeature('advanced-operators');
+                                    setPaywallDialogOpen(true);
+                                  }
+                                }}
+                              >
+                                <Crown className="h-3 w-3" />
+                              </Button>
+                            )
+                          )}
+                      </label>
+                    );
+
+                    if (platform.id === 'google-trends') {
+                      return (
+                        <Tooltip key={platform.id}>
+                          <TooltipTrigger asChild>
+                            {platformElement}
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Uses Main Topic only! You'll have to change on Google Trends tab to Topic not Search term.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      );
+                    }
+
+                    // Add tooltips for other platforms
+                    if (platformDescriptions[platform.id]) {
+                      return (
+                        <Tooltip key={platform.id}>
+                          <TooltipTrigger asChild>
+                            {platformElement}
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{platformDescriptions[platform.id]}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      );
+                    }
+
+                    return platformElement;
+                  })}
+                </div>
+
+                {selectedPlatforms.length > 0 && (
+                  <div className="mt-4 p-3 bg-muted/30 rounded-lg">
+                    <p className="text-sm text-muted-foreground">
+                      <span className="font-medium text-foreground">{selectedPlatforms.length}</span> platform{selectedPlatforms.length !== 1 ? 's' : ''} selected
+                    </p>
+                  </div>
+                 )}
+               </CardContent>
+             </Card>
+             
+              
+            </div>
+         </div>
+
+         {/* Advanced Options Modal */}
+        <Dialog open={showAdvancedModal} onOpenChange={setShowAdvancedModal}>
+          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Settings className="w-5 h-5 text-research-blue" />
+                Advanced Options: {platforms.find(p => p.id === selectedPlatformForAdvanced)?.name}
+              </DialogTitle>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              {/* Facebook Advanced Options */}
+              {selectedPlatformForAdvanced === 'facebook' && (
+                <div className="space-y-4">
+                  <div>
+                    <Label className="text-sm font-medium">Group ID (optional)</Label>
+                    <Input
+                      placeholder="Enter Facebook group ID"
+                      value={advancedOptions.facebook.groupId}
+                      onChange={(e) => setAdvancedOptions(prev => ({
+                        ...prev,
+                        facebook: { ...prev.facebook, groupId: e.target.value }
+                      }))}
+                      className="mt-1"
+                    />
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="fb-public"
+                      checked={advancedOptions.facebook.publicPostsOnly}
+                      onCheckedChange={(checked) => setAdvancedOptions(prev => ({
+                        ...prev,
+                        facebook: { ...prev.facebook, publicPostsOnly: !!checked }
+                      }))}
+                    />
+                    <Label htmlFor="fb-public" className="text-sm">Public posts only</Label>
+                  </div>
+                  
+                  <div>
+                    <Label className="text-sm font-medium mb-2 block">Community Focus</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {['support', 'community help', 'beginners', 'newbies'].map(type => (
+                        <label key={type} className="flex items-center space-x-2 text-sm">
+                          <Checkbox
+                            checked={advancedOptions.facebook.communityType.includes(type)}
+                            onCheckedChange={(checked) => {
+                              setAdvancedOptions(prev => ({
+                                ...prev,
+                                facebook: {
+                                  ...prev.facebook,
+                                  communityType: checked 
+                                    ? [...prev.facebook.communityType, type]
+                                    : prev.facebook.communityType.filter(t => t !== type)
+                                }
+                              }));
+                            }}
+                          />
+                          <span>{type}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Reddit Advanced Options */}
+              {selectedPlatformForAdvanced === 'reddit' && (
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="reddit-self"
+                      checked={advancedOptions.reddit.selfPostsOnly}
+                      onCheckedChange={(checked) => setAdvancedOptions(prev => ({
+                        ...prev,
+                        reddit: { ...prev.reddit, selfPostsOnly: !!checked }
+                      }))}
+                    />
+                    <Label htmlFor="reddit-self" className="text-sm">Self posts only</Label>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="reddit-score"
+                      checked={advancedOptions.reddit.minScore}
+                      onCheckedChange={(checked) => setAdvancedOptions(prev => ({
+                        ...prev,
+                        reddit: { ...prev.reddit, minScore: !!checked }
+                      }))}
+                    />
+                    <Label htmlFor="reddit-score" className="text-sm">High engagement posts (score ≥ {advancedOptions.reddit.scoreThreshold})</Label>
+                  </div>
+                  
+                  {advancedOptions.reddit.minScore && (
+                    <div>
+                      <Label className="text-sm font-medium">Score Threshold</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={advancedOptions.reddit.scoreThreshold}
+                        onChange={(e) => setAdvancedOptions(prev => ({
+                          ...prev,
+                          reddit: { ...prev.reddit, scoreThreshold: parseInt(e.target.value) || 50 }
+                        }))}
+                        className="mt-1"
+                      />
+                    </div>
+                  )}
+                  
+                  <div>
+                    <Label className="text-sm font-medium">Author Search (optional)</Label>
+                    <Input
+                      placeholder="Enter Reddit username"
+                      value={advancedOptions.reddit.author}
+                      onChange={(e) => setAdvancedOptions(prev => ({
+                        ...prev,
+                        reddit: { ...prev.reddit, author: e.target.value }
+                      }))}
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Twitter Advanced Options */}
+              {selectedPlatformForAdvanced === 'twitter' && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 gap-3">
+                    {[
+                      { key: 'emotionalContent', label: 'Emotional content (struggling, frustrated, wish I knew)' },
+                      { key: 'communityValidation', label: 'Community validation (anyone else, am I the only one)' },
+                      { key: 'opinions', label: 'Opinions & hot takes (unpopular opinion, hot take)' },
+                      { key: 'rants', label: 'Rants & venting (no links)' },
+                      { key: 'experiences', label: 'Experience sharing (with native video)' },
+                      { key: 'verifiedOnly', label: 'Verified accounts only' },
+                      { key: 'hasMedia', label: 'Posts with media only' }
+                    ].map(option => (
+                      <div key={option.key} className="flex items-center space-x-2">
+                        <Checkbox
+                          checked={advancedOptions.twitter[option.key]}
+                          onCheckedChange={(checked) => setAdvancedOptions(prev => ({
+                            ...prev,
+                            twitter: { ...prev.twitter, [option.key]: !!checked }
+                          }))}
+                        />
+                        <Label className="text-sm">{option.label}</Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Instagram Advanced Options */}
+              {selectedPlatformForAdvanced === 'instagram' && (
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="ig-link-bio"
+                      checked={advancedOptions.instagram.linkInBio}
+                      onCheckedChange={(checked) => setAdvancedOptions(prev => ({
+                        ...prev,
+                        instagram: { ...prev.instagram, linkInBio: !!checked }
+                      }))}
+                    />
+                    <Label htmlFor="ig-link-bio" className="text-sm">Link in bio posts with struggle keywords</Label>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="ig-swipe-up"
+                      checked={advancedOptions.instagram.swipeUp}
+                      onCheckedChange={(checked) => setAdvancedOptions(prev => ({
+                        ...prev,
+                        instagram: { ...prev.instagram, swipeUp: !!checked }
+                      }))}
+                    />
+                    <Label htmlFor="ig-swipe-up" className="text-sm">Swipe up posts with authenticity keywords</Label>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="ig-reels"
+                      checked={advancedOptions.instagram.reelsOnly}
+                      onCheckedChange={(checked) => setAdvancedOptions(prev => ({
+                        ...prev,
+                        instagram: { ...prev.instagram, reelsOnly: !!checked }
+                      }))}
+                    />
+                    <Label htmlFor="ig-reels" className="text-sm">Reels only with relatable phrases</Label>
+                  </div>
+                </div>
+              )}
+
+              {/* LinkedIn Advanced Options */}
+              {selectedPlatformForAdvanced === 'linkedin' && (
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="linkedin-posts"
+                      checked={advancedOptions.linkedin.publicPosts}
+                      onCheckedChange={(checked) => setAdvancedOptions(prev => ({
+                        ...prev,
+                        linkedin: { ...prev.linkedin, publicPosts: !!checked }
+                      }))}
+                    />
+                    <Label htmlFor="linkedin-posts" className="text-sm">Public posts with struggle language</Label>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="linkedin-pulse"
+                      checked={advancedOptions.linkedin.pulseArticles}
+                      onCheckedChange={(checked) => setAdvancedOptions(prev => ({
+                        ...prev,
+                        linkedin: { ...prev.linkedin, pulseArticles: !!checked }
+                      }))}
+                    />
+                    <Label htmlFor="linkedin-pulse" className="text-sm">Pulse articles with opinions</Label>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="linkedin-company"
+                      checked={advancedOptions.linkedin.companyPosts}
+                      onCheckedChange={(checked) => setAdvancedOptions(prev => ({
+                        ...prev,
+                        linkedin: { ...prev.linkedin, companyPosts: !!checked }
+                      }))}
+                    />
+                    <Label htmlFor="linkedin-company" className="text-sm">Company page feedback & reviews</Label>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="linkedin-industry"
+                      checked={advancedOptions.linkedin.industrySpecific}
+                      onCheckedChange={(checked) => setAdvancedOptions(prev => ({
+                        ...prev,
+                        linkedin: { ...prev.linkedin, industrySpecific: !!checked }
+                      }))}
+                    />
+                    <Label htmlFor="linkedin-industry" className="text-sm">Industry-specific pain points</Label>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="linkedin-role"
+                      checked={advancedOptions.linkedin.roleBased}
+                      onCheckedChange={(checked) => setAdvancedOptions(prev => ({
+                        ...prev,
+                        linkedin: { ...prev.linkedin, roleBased: !!checked }
+                      }))}
+                    />
+                    <Label htmlFor="linkedin-role" className="text-sm">Role-based research</Label>
+                  </div>
+                  
+                  {advancedOptions.linkedin.roleBased && (
+                    <div>
+                      <Label className="text-sm font-medium">Target Role</Label>
+                      <Select 
+                        value={advancedOptions.linkedin.targetRole} 
+                        onValueChange={(value) => setAdvancedOptions(prev => ({
+                          ...prev,
+                          linkedin: { ...prev.linkedin, targetRole: value }
+                        }))}
+                      >
+                        <SelectTrigger className="mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="CEO">CEO</SelectItem>
+                          <SelectItem value="founder">Founder</SelectItem>
+                          <SelectItem value="marketing manager">Marketing Manager</SelectItem>
+                          <SelectItem value="product manager">Product Manager</SelectItem>
+                          <SelectItem value="sales manager">Sales Manager</SelectItem>
+                          <SelectItem value="CTO">CTO</SelectItem>
+                          <SelectItem value="CMO">CMO</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TikTok Advanced Options */}
+              {selectedPlatformForAdvanced === 'tiktok' && (
+                <div className="space-y-4">
+                  <div>
+                    <Label className="text-sm font-medium mb-2 block">Hashtag Trends</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {['fyp', 'viral', 'trending', 'foryou', 'foryoupage', 'trend', 'popular', 'explore'].map(tag => (
+                        <label key={tag} className="flex items-center space-x-2 text-sm">
+                          <Checkbox
+                            checked={advancedOptions.tiktok.hashtagTrends.includes(tag)}
+                            onCheckedChange={(checked) => {
+                              setAdvancedOptions(prev => ({
+                                ...prev,
+                                tiktok: {
+                                  ...prev.tiktok,
+                                  hashtagTrends: checked 
+                                    ? [...prev.tiktok.hashtagTrends, tag]
+                                    : prev.tiktok.hashtagTrends.filter(t => t !== tag)
+                                }
+                              }));
+                            }}
+                          />
+                          <span>#{tag}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="text-sm font-medium mb-2 block">Content Types</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {['dance', 'comedy', 'educational', 'cooking', 'beauty', 'fitness', 'life hacks', 'review'].map(type => (
+                        <label key={type} className="flex items-center space-x-2 text-sm">
+                          <Checkbox
+                            checked={advancedOptions.tiktok.contentTypes.includes(type)}
+                            onCheckedChange={(checked) => {
+                              setAdvancedOptions(prev => ({
+                                ...prev,
+                                tiktok: {
+                                  ...prev.tiktok,
+                                  contentTypes: checked 
+                                    ? [...prev.tiktok.contentTypes, type]
+                                    : prev.tiktok.contentTypes.filter(t => t !== type)
+                                }
+                              }));
+                            }}
+                          />
+                          <span>{type}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="text-sm font-medium mb-2 block">Creator Collaborations</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {['duet', 'stitch', 'collaboration', 'collab'].map(collab => (
+                        <label key={collab} className="flex items-center space-x-2 text-sm">
+                          <Checkbox
+                            checked={advancedOptions.tiktok.creatorCollabs.includes(collab)}
+                            onCheckedChange={(checked) => {
+                              setAdvancedOptions(prev => ({
+                                ...prev,
+                                tiktok: {
+                                  ...prev.tiktok,
+                                  creatorCollabs: checked 
+                                    ? [...prev.tiktok.creatorCollabs, collab]
+                                    : prev.tiktok.creatorCollabs.filter(c => c !== collab)
+                                }
+                              }));
+                            }}
+                          />
+                          <span>{collab}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="text-sm font-medium mb-2 block">Creator Tiers</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {['micro influencer', 'macro influencer', 'celebrity', 'brand ambassador'].map(tier => (
+                        <label key={tier} className="flex items-center space-x-2 text-sm">
+                          <Checkbox
+                            checked={advancedOptions.tiktok.creatorTier.includes(tier)}
+                            onCheckedChange={(checked) => {
+                              setAdvancedOptions(prev => ({
+                                ...prev,
+                                tiktok: {
+                                  ...prev.tiktok,
+                                  creatorTier: checked 
+                                    ? [...prev.tiktok.creatorTier, tier]
+                                    : prev.tiktok.creatorTier.filter(t => t !== tier)
+                                }
+                              }));
+                            }}
+                          />
+                          <span>{tier}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="text-sm font-medium">Specific Creator (optional)</Label>
+                    <Input
+                      placeholder="Enter creator username (without @)"
+                      value={advancedOptions.tiktok.specificCreator}
+                      onChange={(e) => setAdvancedOptions(prev => ({
+                        ...prev,
+                        tiktok: { ...prev.tiktok, specificCreator: e.target.value }
+                      }))}
+                      className="mt-1"
+                    />
+                  </div>
+
+                  <div>
+                    <Label className="text-sm font-medium mb-2 block">Viral Patterns</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {['went viral', 'blew up', 'viral moment', 'trending now'].map(pattern => (
+                        <label key={pattern} className="flex items-center space-x-2 text-sm">
+                          <Checkbox
+                            checked={advancedOptions.tiktok.viralPatterns.includes(pattern)}
+                            onCheckedChange={(checked) => {
+                              setAdvancedOptions(prev => ({
+                                ...prev,
+                                tiktok: {
+                                  ...prev.tiktok,
+                                  viralPatterns: checked 
+                                    ? [...prev.tiktok.viralPatterns, pattern]
+                                    : prev.tiktok.viralPatterns.filter(p => p !== pattern)
+                                }
+                              }));
+                            }}
+                          />
+                          <span>{pattern}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* YouTube Advanced Options */}
+              {selectedPlatformForAdvanced === 'youtube' && (
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="youtube-channel"
+                      checked={advancedOptions.youtube.channelSpecific}
+                      onCheckedChange={(checked) => setAdvancedOptions(prev => ({
+                        ...prev,
+                        youtube: { ...prev.youtube, channelSpecific: !!checked }
+                      }))}
+                    />
+                    <Label htmlFor="youtube-channel" className="text-sm">Channel-specific honest reviews</Label>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="youtube-reactions"
+                      checked={advancedOptions.youtube.videoReactions}
+                      onCheckedChange={(checked) => setAdvancedOptions(prev => ({
+                        ...prev,
+                        youtube: { ...prev.youtube, videoReactions: !!checked }
+                      }))}
+                    />
+                    <Label htmlFor="youtube-reactions" className="text-sm">Strong video reactions (game changer, scam, etc.)</Label>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="youtube-tutorial"
+                      checked={advancedOptions.youtube.tutorialFeedback}
+                      onCheckedChange={(checked) => setAdvancedOptions(prev => ({
+                        ...prev,
+                        youtube: { ...prev.youtube, tutorialFeedback: !!checked }
+                      }))}
+                    />
+                    <Label htmlFor="youtube-tutorial" className="text-sm">Tutorial feedback (worked/didn't work)</Label>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="youtube-reviews"
+                      checked={advancedOptions.youtube.productReviews}
+                      onCheckedChange={(checked) => setAdvancedOptions(prev => ({
+                        ...prev,
+                        youtube: { ...prev.youtube, productReviews: !!checked }
+                      }))}
+                    />
+                    <Label htmlFor="youtube-reviews" className="text-sm">Product reviews with time usage</Label>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="youtube-longterm"
+                      checked={advancedOptions.youtube.longTermReviews}
+                      onCheckedChange={(checked) => setAdvancedOptions(prev => ({
+                        ...prev,
+                        youtube: { ...prev.youtube, longTermReviews: !!checked }
+                      }))}
+                    />
+                    <Label htmlFor="youtube-longterm" className="text-sm">Long-term reviews (6 months, 1 year later)</Label>
+                  </div>
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      </main>
+
+
+      {/* Tutorial Overlay */}
+      {showTutorial && (
+        <>
+          {/* Dark overlay */}
+          <div className="fixed inset-0 bg-black/60 z-40" onClick={skipTutorial} />
+          
+          {/* Tutorial spotlight and tooltip */}
+          <div className="fixed inset-0 z-50 pointer-events-none">
+            {(() => {
+              const currentStep = tutorialSteps[tutorialStep];
+              let targetElement = document.querySelector(currentStep.target);
+              if (!targetElement && currentStep.target === '#advanced-modal-trigger') {
+                targetElement = document.querySelector('#platform-selector');
+              }
+              
+              if (!targetElement) return null;
+              
+              const rect = targetElement.getBoundingClientRect();
+              const isLeft = currentStep.position === 'left';
+              const isRight = currentStep.position === 'right';
+              const isTop = currentStep.position === 'top';
+              const isBottom = currentStep.position === 'bottom';
+              
+              // Calculate tooltip position
+              let tooltipStyle: React.CSSProperties = {};
+              let arrowClass = '';
+              
+              if (isLeft) {
+                tooltipStyle = {
+                  right: window.innerWidth - rect.left + 20,
+                  top: rect.top + rect.height / 2,
+                  transform: 'translateY(-50%)'
+                };
+                arrowClass = 'border-l-0 border-r-8 border-r-background left-full top-1/2 -translate-y-1/2';
+              } else if (isRight) {
+                tooltipStyle = {
+                  left: rect.right + 20,
+                  top: rect.top + rect.height / 2,
+                  transform: 'translateY(-50%)'
+                };
+                arrowClass = 'border-r-0 border-l-8 border-l-background right-full top-1/2 -translate-y-1/2';
+              } else if (isTop) {
+                tooltipStyle = {
+                  left: rect.left + rect.width / 2,
+                  bottom: window.innerHeight - rect.top + 20,
+                  transform: 'translateX(-50%)'
+                };
+                arrowClass = 'border-t-0 border-b-8 border-b-background top-full left-1/2 -translate-x-1/2';
+              } else {
+                tooltipStyle = {
+                  left: rect.left + rect.width / 2,
+                  top: rect.bottom + 20,
+                  transform: 'translateX(-50%)'
+                };
+                arrowClass = 'border-b-0 border-t-8 border-t-background bottom-full left-1/2 -translate-x-1/2';
+              }
+              
+              return (
+                <>
+                  {/* Spotlight highlight */}
+                  <div 
+                    className="absolute border-2 border-primary rounded-lg animate-pulse"
+                    style={{
+                      left: rect.left - 4,
+                      top: rect.top - 4,
+                      width: rect.width + 8,
+                      height: rect.height + 8,
+                      boxShadow: '0 0 0 9999px rgba(0,0,0,0.6)'
+                    }}
+                  />
+                  
+                  {/* Tutorial tooltip */}
+                  <div 
+                    className="absolute pointer-events-auto bg-background border border-border rounded-lg shadow-lg p-4 max-w-sm animate-fade-in"
+                    style={tooltipStyle}
+                  >
+                    {/* Arrow */}
+                    <div className={`absolute w-0 h-0 border-transparent border-8 ${arrowClass}`} />
+                    
+                    <div className="space-y-3">
+                      <div>
+                        <h3 className="font-semibold text-sm text-foreground mb-1">
+                          {currentStep.title}
+                        </h3>
+                        <p className="text-sm text-muted-foreground">
+                          {currentStep.content}
+                        </p>
+                        {Array.isArray((currentStep as any).buttons) && (currentStep as any).buttons.length > 0 && (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {(currentStep as any).buttons.map((btn: any, i: number) => (
+                              <Button key={i} size="sm" variant="secondary" className="text-xs" onClick={btn.action}>
+                                {btn.text}
+                              </Button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1">
+                          {tutorialSteps.map((_, index) => (
+                            <div
+                              key={index}
+                              className={`w-2 h-2 rounded-full ${
+                                index === tutorialStep ? 'bg-primary' : 'bg-muted'
+                              }`}
+                            />
+                          ))}
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={skipTutorial}
+                            className="text-xs"
+                          >
+                            Skip
+                          </Button>
+                          {tutorialStep > 0 && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={prevStep}
+                              className="text-xs"
+                            >
+                              Back
+                            </Button>
+                          )}
+                          <Button
+                            variant="default"
+                            size="sm"
+                            onClick={nextStep}
+                            className="text-xs"
+                          >
+                            {tutorialStep === tutorialSteps.length - 1 ? 'Finish' : 'Next'}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
+           </div>
+        </>
+       )}
+      </>
+      )}
+
+      {/* Footer */}
+      <footer className="bg-white border-t border-border mt-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="text-center space-y-2">
+            <p className="text-muted-foreground text-sm">
+              © 2024 Social media research tool. Built for researchers, marketers, and founders.
+            </p>
+            <p className="text-muted-foreground text-sm">
+              Need help? Contact us at{' '}
+              <a 
+                href="mailto:support@painpointresearch.com" 
+                className="text-research-blue-dark hover:underline"
+              >
+                support@painpointresearch.com
+              </a>
+            </p>
+          </div>
+        </div>
+      </footer>
+      
+      <AuthDialog open={authDialogOpen} onOpenChange={setAuthDialogOpen} />
+      <PaywallDialog 
+        open={paywallDialogOpen} 
+        onOpenChange={setPaywallDialogOpen}
+        feature={paywallFeature}
+      />
+      <SavedQueriesDialog
+        open={savedQueriesDialogOpen}
+        onOpenChange={setSavedQueriesDialogOpen}
+        onLoadQuery={handleLoadQuery}
+      />
+      <UpgradeDialog
+        open={upgradeDialogOpen}
+        onOpenChange={setUpgradeDialogOpen}
+        reason={upgradeReason}
+      />
+    </div>
+  );
+};
+
+export default Index;

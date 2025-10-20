@@ -1,0 +1,52 @@
+{
+  "business-leads": {
+    "name": "Business Leads",
+    "mainTopic": "maine",
+    "phrases": ["\"need a carpenter\"", "\"looking for carpenter\"", "\"recommend a carpenter\""],
+    "keywords": [],
+    "required": [],
+    "exclude": [],
+    "platforms": ["facebook"],
+    "timeFilter": "day"
+  },
+  "pain-points": {
+    "name": "Research Pain Points",
+    "mainTopic": "e bikes owner",
+    "keywords": [],
+    "required": [],
+    "exclude": [],
+    "platforms": ["facebook", "reddit"],
+    "timeFilter": "any",
+    "useAllPhrases": true
+  },
+  "real-estate": {
+    "name": "Real Estate Market",
+    "mainTopic": "maine",
+    "phrases": ["\"cost to build per sqft\"", "\"building costs per square foot\"", "\"what did you pay to build\"", "\"recently built\"", "\"construction costs\""],
+    "keywords": [],
+    "required": [],
+    "exclude": ["for rent", "renting", "lease", "tenant", "landlord", "monthly rent", "deposit", "available now", "bedrooms bath", "listing", "MLS", "realtor", "buying", "sold", "foreclosure", "fixer upper", "renovated", "updated kitchen", "basement apartment", "Airbnb"],
+    "platforms": ["facebook", "reddit"],
+    "timeFilter": "year"
+  },
+  "free-furniture": {
+    "name": "Free Furniture",
+    "mainTopic": "maine table",
+    "phrases": ["\"needed\"", "\"for sale\"", "\"free\""],
+    "keywords": [],
+    "required": [],
+    "exclude": [],
+    "platforms": ["facebook"],
+    "timeFilter": "day"
+  },
+  "job-listings": {
+    "name": "Job Listings",
+    "mainTopic": "maine",
+    "phrases": ["\"need a nanny\"", "\"looking for nanny\"", "\"recommend a nanny\""],
+    "keywords": [],
+    "required": [],
+    "exclude": [],
+    "platforms": ["facebook"],
+    "timeFilter": "day"
+  }
+}

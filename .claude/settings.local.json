@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx supabase:*)",
+      "Bash(git push)",
+      "Bash(supabase functions deploy:*)",
+      "Bash(npx supabase@latest link:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
